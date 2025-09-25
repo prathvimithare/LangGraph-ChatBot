@@ -23,7 +23,7 @@ def papers_tool(query: str) -> str:
         return "Retriever not set."
     
     docs, scores = papers_retriever.invoke(query)
-    print(f'\nNo. of docs: {len(docs)} and scores: {scores}. \nThe retrieved documents are: {docs}\n')
+    # print(f'\nNo. of docs: {len(docs)} and scores: {scores}. \nThe retrieved documents are: {docs}\n')
     if not docs:
         return "No relevant publications found."
     

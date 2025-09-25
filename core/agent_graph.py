@@ -6,12 +6,38 @@ from operator import add as add_messages
 class AgentState(TypedDict):
     messages: Annotated[Sequence[BaseMessage], add_messages]
 
+class ContextDeciderState(TypedDict):
+    messages: Annotated[Sequence[BaseMessage], add_messages]
+
 def should_continue(state: AgentState):
     """Check if the last message contains tool calls."""
     last_message = state['messages'][-1]
     return hasattr(last_message, 'tool_calls') and len(last_message.tool_calls) > 0
 
-def create_graph(llm, tools_dict, system_prompt: str):    
+def create_graph(llm, tools_dict, system_prompt: str, decider_llm):
+    # --- CONTEXT DECIDER ---
+    def context_decider(state: ContextDeciderState) -> ContextDeciderState:
+        """Decides if context should be reset or kept."""
+        query = state["messages"][-1].content
+
+        decision = decider_llm.invoke([
+            SystemMessage(content=(
+                "You are a context decider. "
+                "If the new query is unrelated to past context, respond 'RESET'. "
+                "If it depends on past context, respond 'KEEP'. "
+                "If it is general chit-chat, respond 'CHITCHAT'."
+            )),
+            HumanMessage(content=query)
+        ])
+
+        mode = decision.content.strip().upper()
+
+        if mode in ["RESET", "CHITCHAT"]:
+            # Drop history, keep only latest user message
+            return {"messages": [state["messages"][-1]]}
+        else:  # KEEP
+            return state
+          
     # --- LLM CALL ---
     def call_llm(state: AgentState) -> AgentState:
         messages = [SystemMessage(content=system_prompt)] + list(state['messages'])

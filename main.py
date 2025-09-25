@@ -13,6 +13,7 @@ from tools.bp_tool import bp_tool
 def main():
     # Initialize LLM and Memory
     llm_manager = LLMManager(Config.GROQ_API_KEY)
+    decider_llm = LLMManager(Config.GROQ_API_KEY)
     memory = MemoryManager()
 
     papers_service = VectorService(
@@ -49,7 +50,16 @@ def main():
     llm = llm_manager.bind_tools(tools)
 
     # Create RAG agent graph
-    rag_agent = create_graph(llm, tools_dict, SYSTEM_PROMPT)
+    rag_agent = create_graph(llm, tools_dict, SYSTEM_PROMPT, decider_llm)
+
+    # Export as Mermaid code
+    mermaid_code = rag_agent.get_graph().draw_mermaid()
+
+    # Save to file
+    with open("graph.mmd", "w") as f:
+        f.write(mermaid_code)
+
+    print("Mermaid diagram saved as graph.mmd")
 
     print("\n=== RAG AGENT ===")
     while True:

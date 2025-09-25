@@ -25,7 +25,7 @@ def bp_tool(query: str) -> str:
         return "Retriever not set."
     
     docs, scores = bp_retriever.invoke(query)
-    print(f'\nNo. of docs: {len(docs)} and scores: {scores}. \nThe retrieved documents are: {docs}\n')
+    # print(f'\nNo. of docs: {len(docs)} and scores: {scores}. \nThe retrieved documents are: {docs}\n')
     if not docs:
         return "No relevant Praxisbeispiele found."
     
