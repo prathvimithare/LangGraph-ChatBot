@@ -1,45 +1,72 @@
+from core.llm_manager import LLMManager
+from core.memory_manager import MemoryManager
+from core.agent_graph import create_graph
+from core.prompts import SYSTEM_PROMPT
+from services.vector_service import VectorService
+from langchain_core.messages import HumanMessage
 from config import Config
-from opensearch import OpenSearchClient
-from document_processor import DocumentProcessor
-from vector_store import VectorStore
-from llm_service import LLMService
+import tools.papers_tool as pt
+import tools.bp_tool as bt
+from tools.papers_tool import papers_tool
+from tools.bp_tool import bp_tool
 
-index_name = "cocobp"
-bp_client = OpenSearchClient(host=Config.OPENSEARCH_URL, index_name=index_name)
+def main():
+    # Initialize LLM and Memory
+    llm_manager = LLMManager(Config.GROQ_API_KEY)
+    memory = MemoryManager()
 
-all_docs = bp_client.get_all_documents()
-print(f"Total documents fetched: {len(all_docs)}")
+    papers_service = VectorService(
+    index_name="papers",
+    collection_name="papers_chunks",
+    text_keys=["title", "abstr"],
+    metadata_keys=["title", "id"]
+    )
 
-new_docs = bp_client.get_new_documents()
-print(f"Total documents fetched: {len(new_docs)}")
+    bp_service = VectorService(
+        index_name="cocobp",
+        collection_name="cocobp_chunks",
+        text_keys=["title", "challengeLongDescription", "solutionLongDescription", "benefitsLongDescription"],
+        metadata_keys=["title", "csId"]
+    )
 
-all_docs = all_docs + new_docs
+    papers_service.index_documents()               
+    bp_service.index_documents()
 
-processor = DocumentProcessor(chunk_size=500, chunk_overlap=50)
+    top_docs = 5
+    conf_threshold = 0.8
+    papers_retriever = papers_service.build_retriever(top_docs, conf_threshold)  
+    bp_retriever = bp_service.build_retriever(top_docs, conf_threshold)
 
-keys_to_use = [
-                "title", "challengeLongDescription", 
-                "solutionLongDescription", "benefitsLongDescription"
-            ]
-texts = processor.extract_text(all_docs, keys_to_use)
 
-chunks = processor.split_documents(texts)
+    # Assign retrievers to tool modules
+    pt.papers_retriever = papers_retriever
+    bt.bp_retriever = bp_retriever
 
-print(f"Total chunks created: {len(chunks)}")
+    tools = [papers_tool, bp_tool]
+    tools_dict = {t.name: t for t in tools}
 
-vector_client = VectorStore(collection_name="cocobp_chunks", persist_directory="db/chroma", ollama_host=Config.OLLAMA_HOST)
-vector_client.add_documents(chunks)
-print("Added chunks to vector store")
+    # Bind tools to LLM
+    llm = llm_manager.bind_tools(tools)
 
-llm_chat = LLMService(vector_client, Config.OLLAMA_HOST)
+    # Create RAG agent graph
+    rag_agent = create_graph(llm, tools_dict, SYSTEM_PROMPT)
 
-query = "What are the main challenges in AI adoption?"
-answer, source_docs = llm_chat.get_response(query)
+    print("\n=== RAG AGENT ===")
+    while True:
+        user_input = input("\nYour question: ")
+        if user_input.lower() in ["exit", "quit"]:
+            break
 
-print("User:", query)
-print("AI:", answer)
+        history = memory.load()
+        messages = history + [HumanMessage(content=user_input)]
+        result = rag_agent.invoke({"messages": messages})
+        ai_response = result["messages"][-1].content
 
-print("\nReferenced Documents:")
-for i, source_doc in enumerate(source_docs, 1):
-    print(f"{i}. {source_doc.metadata.get('title', 'Unknown source')}")
-    print(f"   Content: {source_doc.page_content[:200]}...")
+        print("\n=== ANSWER ===")
+        print(ai_response)
+
+        memory.save(user_input, ai_response)
+
+
+if __name__ == "__main__":
+    main()
