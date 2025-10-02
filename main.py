@@ -13,7 +13,7 @@ from tools.bp_tool import bp_tool
 def main():
     # Initialize LLM and Memory
     llm_manager = LLMManager(Config.GROQ_API_KEY)
-    decider_llm = LLMManager(Config.GROQ_API_KEY)
+    decider_llm = LLMManager(Config.GROQ_API_KEY).llm
     memory = MemoryManager()
 
     papers_service = VectorService(
@@ -34,7 +34,7 @@ def main():
     bp_service.index_documents()
 
     top_docs = 5
-    conf_threshold = 0.8
+    conf_threshold = 0.3
     papers_retriever = papers_service.build_retriever(top_docs, conf_threshold)  
     bp_retriever = bp_service.build_retriever(top_docs, conf_threshold)
 
